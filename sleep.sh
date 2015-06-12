@@ -1,5 +1,5 @@
 #!/bin/sh
 while true 
 do 
-    sleep 1000
+    read
 done

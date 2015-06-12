@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <syslog.h>
 #include <string.h>
+#include <stdlib.h>
 
 /* Copied from sys-utils/nsenter.c */
 static int open_target_fd(int *fd, const char *path)
@@ -43,9 +44,22 @@ int mount(const char *source, const char *target,
 
     orig_mount = dlsym(RTLD_NEXT, "mount");
 
+
     if (!strcmp("fuse.glusterfs", filesystemtype)) {
+        char *nspath;
+        const char *hostproc = getenv("HOSTPROCPATH");
+        if (!hostproc)
+            hostproc = "";
+
         openlog ("mount.so", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
-        if (!open_target_fd(&targetfd, "/proc/1/ns/mnt")){
+
+        if (asprintf(&nspath, "%s/proc/1/ns/mnt", hostproc) < 0) {
+            syslog(LOG_NOTICE, "Failed to allocate memory");
+            closelog();
+            return -1;
+        }
+
+        if (!open_target_fd(&targetfd, nspath)){
             if (setns(targetfd, CLONE_NEWNS)){
                 syslog(LOG_NOTICE, "setns failed for filesystem: %s", filesystemtype);
             }else {
@@ -54,6 +68,7 @@ int mount(const char *source, const char *target,
         }else {
             syslog(LOG_NOTICE, "failed to open ns for filesystem: %s", filesystemtype);
         }
+        free(nspath);
         closelog();
     }
 
