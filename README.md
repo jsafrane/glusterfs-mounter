@@ -71,12 +71,12 @@ We need `kubelet` to start a mounter container instance on every node. There are
     EOF
     ```
 
-2. Configure `kubelet` daemon. On Atomic host, edit `/etc/kubernetes/kubelet` and add `--config=...` option to set directory with static pods and `--volume-mounter=container --mount-container=...` to instruct `kubelet` to use `mounter` container to mount GlusterFS (and plain `/bin/mount` for everything else). Of course, use your local IP address instead of `192.168.100.81`.
+2. Configure `kubelet` daemon. On Atomic host, edit `/etc/kubernetes/kubelet` and add `--config=...` option to set directory with static pods and `--volume-mounter=container --mount-container=...` to instruct `kubelet` to use a container named 'mounter' in a pod with label 'name=glusterfs-mounter' to mount GlusterFS (and plain `/bin/mount` for everything else).
 
     ```
     $ vi /etc/kubernetes/kubelet
     ...
-    KUBELET_ARGS="--config=/etc/kubelet.d --volume-mounter=container --mount-container=glusterfs:default:mounter-192.168.100.81:mounter --cluster_dns=10.254.0.10 --cluster_domain=kube.local"
+    KUBELET_ARGS="--config=/etc/kubelet.d --volume-mounter=container --mount-container=glusterfs:name=glusterfs-mounter:mounter --cluster_dns=10.254.0.10 --cluster_domain=kube.local"
     ```
     
 3. Restart `kubelet` and wait until it downloads the mounter container image. It should start it in a minute or so, it will be visible in `docker ps` output on the node or as *mirror pod* in `kubectl get pods` output.
@@ -95,5 +95,8 @@ We need `kubelet` to start a mounter container instance on every node. There are
 
 This code is just a proof of concept. Some steps may be necessary to make it production ready:
 - Don't use `ld.so.preload` trick to mount volumes from inside the container to the host mount namespace. Perhaps a new `docker run` option? Still, the container needs to be privileged to allow mounting...
-- Don't use mounter pod/container names in `--volume-mounter` option. Use labels? Does `kubelet` have code to filter its pods by labels?
-
+- How to start the mount pods on all nodes?
+  - We can use either static pods, i.e. distribute configuration files to all nodes during node setup (Puppet, Ansible, ...)
+  - Develop a replication controller that wil start a pod on all nodes. There are several proposals at https://github.com/GoogleCloudPlatform/kubernetes/issues/1518
+- Think hard about security. Anyone can label a pod with 'name=glusterfs-mounter'. Can it be used to steal data?
+- Combine it with NsenterMounter when kubelet itself runs inside a container. Now `kubelet` does plain `/bin/unmount` to destroy volumes, we may need `nsenter /bin/umount`.
